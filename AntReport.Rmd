@@ -1,0 +1,619 @@
+---
+title: "Ant Lab Report"
+author: "Will Johnson"
+output: pdf_document
+
+bibliography: /Users/will/Documents/projects/antreport/AntReport.bib
+csl: /Users/will/Documents/projects/antreport/ecology.csl
+---
+
+**Abstract**
+
+*Solenopsis invicta* is a South American species of ant which is a dominant invasive across much of the southeastern United States, as well as globally. This study investigates its presence and distribution at Brackenridge Field Lab in central Texas, as well as the overall community structure and composition of other species of ants. Ant colonies were sampled by random baiting of the study areas with hot dog slices and, after aggregation of the species data, testing for richness. Open canopies and high disturbance areas were found to increase the relative abundance of red imported fire ants, which in turn decreased the evenness of ant communities in those areas. These community types also had a much lower diversity, which is likely due to the overwhelming dominance of red imported fire ants. 
+
+**Introduction**
+
+Brackenridge Field Lab (BFL) is built on 82 acres of land in west Austin, where it has been used to study ecology since the 1960s. One of the most notable disturbances in the field lab's history has been the complete replacement of its native fire ant species, *Solenopsis geminata*,  with the invasive *Solenopsis invicta* in the 1980s. This invasion was documented by @porterInvasionRedImported1988, wherein the red imported fire ant (RIFA) progressed slowly for several years along a continuous front.
+This study is intended to investigate the distribution of RIFA at BFL and the environmental conditions that predict their presence, as well as the overall community structure and compostion of ants at Brackenridge. 
+
+In @tschinkelDistributionFireAnts1988, RIFA were shown to have a preference towards areas which were heavily disturbed with low canopy coverage, such as by a roadside. The same distribution is predicted for Fire Ants at Brackenridge. @morrisonLONGTERMIMPACTSARTHROPODCOMMUNITY2002a demonstrated that, although biodiversity at Brackenridge was massively decreased immediately after the *S. invicta* invasion, biodiversity had largely returned to pre invasion levels within twelve years. BFL was also one of the pioneer sites in testing and releasing decapitating RIFA specific phorid flies, which decrease the ants' competitive dominance by interfering with foraging [@orrFliesSuppressFire1995] with the threat of decapitation.  For these reasons, biodiversity, measure by richness as well as Shannon diversity Index, is predicted to be as high for areas with high RIFA presence as without.
+
+
+
+**Methods**
+
+To sample ant colonies, a hotdog bait was placed on a spoon and left on an area of the ground which was manually disturbed by the sampler. After a brief interval, the sample was retrieved and carefully placed in a ziploc bag. Sixteen samples were taken per acre sized study area and were placed in a random fashion which was left to the discretion of the sampler. Environmental information was collected from each sample site, including which of the three BFL habitat types it was located in, what the estimated ground and shrub cover was, what the nearest canopy tree species was, what the estimated disturbance and drought stress were, and whether phorid flies were present. Locations were marked with a flag and recorded with GPS coordinates. At the end of the collection period, the ants were euthanized by placing them in the freezer for a week. Ants from each bag were then mounted and examined under a microscope to determine their species, using an identification key.
+
+A chi square test for the effect on the proportion of sites colonized by RIFA was performed pairwise for different environmental conditions, including habitat type, extent of disturbance, estimated density of canopy cover, and estimated density of ground cover. The collected data were evaluated for similarity between the different communities using the Jaccard index. To evaluate the actual and potential species richness, Species Accumulation Curves were calculated for sites with the different environmental conditions previously listed. A log-linear regression was used to predict the richness if 250 sites were sampled for each community type. Rank abundance curves were calculated to determine the evenness of populations, while the Shannon Diversity Index was used to estimate species diversity in populations for those different environmental conditions listed.
+
+**Results**
+```{r setup, include= FALSE}
+
+library(tidyverse)
+library(cowplot)
+library(vegan) # install.packages("vegan")
+library(gridExtra)
+theme_set(theme_cowplot())
+library(kableExtra)
+
+full_ant_data = read_csv("/Users/will/Documents/projects/antreport/full_data_tmp.csv") %>% 
+  mutate( # Define our canopy and ground cover thresholds
+    Canopy = if_else(Canopy_cover >= 2, "closed", "open"),
+    Ground = if_else(Ground_cover >= 2, "dense", "sparse"))
+
+
+
+s_invicta_data = full_ant_data %>%
+  
+  select(-Species, -N) %>%
+  distinct()
+
+
+
+tidy_data = full_ant_data %>%
+  filter(N > 0) 
+
+```
+
+```{r include = FALSE}
+habcont <- xtabs(~ S_invicta_present + Habitat,
+      data = s_invicta_data)
+
+discont <- xtabs(~ S_invicta_present + Disturbance,
+      data = s_invicta_data)
+
+cancont <- xtabs(~ S_invicta_present + Canopy,
+      data = s_invicta_data)
+
+grocont <- xtabs(~ S_invicta_present + Ground,
+      data = s_invicta_data)
+s_invicta_data$interaction <- paste(s_invicta_data$Canopy,s_invicta_data$Disturbance)
+intcont <- xtabs(~ S_invicta_present + interaction,
+      data = s_invicta_data)
+intcont
+```
+```{r include=FALSE}
+chisq.test(habcont)
+chisq.test(discont)
+chisq.test(cancont)
+chisq.test(grocont)
+chisq.test(intcont)
+```
+
+Of all the pairs of conditions tested using Pearson's Chi-squared test, canopy cover, disturbance, and the interaction between canopy cover and disturbance were the only ones which were found to have a significant effect. The significance level was higher for the effect of canopy cover (p-value = 1.941e-07) and the interaction (p-value = 5.453e-08) was higher than that of disturbance (p-value = 0.0121). The null hypothesis could not be rejected for ground cover (p-value = .8907) or habitat type (p-value = 1.574). In the contingency table for the interaction between disturbance and canopy, the only set of conditions which appeared to strongly favor *Solenopsis invicta* was open canopy with high disturbance, where 32 out of 45 sites had the invasive fire ant present. *S. invicta* was present at 22 out of 72 closed canopy sites with high disturbance and 19 out of 85 of those with low disturbance, while it was present at 12 out of 22 open canopy sites with low disturbance.
+
+
+```{r include = FALSE}
+calculate_jaccard_similarity = function(.x, .y) {
+  # .x and .y are character vectors of species names in different communities
+  # We won't be calling this directly on the data
+  common_spp = intersect(.x, .y) # species that are in both; removes duplicates
+  total_spp = unique(c(.x, .y)) # removes duplicates
+  length(common_spp) / length(total_spp)
+}
+jaccard_similarity = function(species, community) {
+  # species is a character vector of species names
+  # community should be a vector identifying which community species is in
+  # This is easier to use with a data frame
+  community_list = unique(community)
+  if(length(community_list) == 1) {
+    # Can't find jaccard similarity of only one community
+    message("Only one community condition found: ", community_list)
+    return(list(NULL))
+  }
+  combn(community_list, 2) %>% # Create all pairwise community combinations
+    t %>% as_tibble %>% set_names(c("com_x", "com_y")) %>% # reformat as data frame
+          # get the members of each community pair
+    mutate(x = map(com_x, ~species[community == .]),
+           y = map(com_y, ~species[community == .]),
+           # Calculate jaccard index
+           jaccard = map2_dbl(x,y,calculate_jaccard_similarity)) %>% 
+    select(com_x, com_y, jaccard) %>% list # format for output
+}
+
+# Now how should we actually use this?
+```
+
+
+```{r include=FALSE}
+# What's the Jaccard similarity between high and low disturbance habitats?
+tidy_data %>%  
+   summarize(
+        jac = jaccard_similarity(species = Species, 
+                           community = Habitat)) %>%  
+  unnest(jac) 
+
+tidy_data %>%  
+  summarize(
+        jac = jaccard_similarity(species = Species, 
+                           community = Disturbance)) %>%  
+  unnest(jac) 
+  
+tidy_data %>%  
+  summarize(
+        jac = jaccard_similarity(species = Species, 
+                           community = Canopy)) %>%  
+  unnest(jac)
+
+tidy_data %>%  
+  group_by(Canopy) %>% 
+  summarize(
+  jac = jaccard_similarity(species = Species, 
+                           community = Disturbance)) %>%  
+  unnest(jac)
+
+tidy_data %>%  
+  summarize(
+        jac = jaccard_similarity(species = Species, 
+                           community = Ground)) %>%  
+  unnest(jac)
+
+```
+
+The results of the Jaccard index found that there was a relatively high amount of overlap between the populations of community types. The lowest Jaccard index was seen between the pasture sites and quarry sites, as well as pasture sites and river sites. The highest degree of community similarity was seen between high disturbance and low disturbance communities, but this was decreased somewhat after grouping these communities by their canopy type. 
+
+```{r, echo = FALSE, format = "asis"}
+jacresults <- matrix(c("high disturbance","closed canopy","closed canopy-high disturbance", "open canopy-high disturbance", "sparse ground cover", "River", "River", "Pasture", "low disturbance","open canopy","closed canopy-low disturbance","open canopy-low disturbance","dense ground cover", "Pasture", "Quarry", "Quarry",0.611,0.556,0.556,0.5,0.556, 0.333,0.6,0.333),ncol=3)
+colnames(jacresults)<-c("Community Type 1", "Community Type 2", "Jaccard Similarity")
+kable(jacresults, format = "latex") %>%
+  kable_styling(full_width = TRUE)
+```
+
+
+```{r include= FALSE}
+to_presence_absense = function(.x) if_else(.x > 0, 1, 0) # converts counts to presence/absense
+
+
+get_sac = function(.data) {
+  # SAC requires a data set where each column is a species, 
+    # each row is a site, and each cell is presence/absence
+  com_mat = .data %>% 
+    filter(!is.na(Species)) %>% 
+    select(Habitat, Site, Acre, Species, N) %>%  
+    # Convert N to presence/absense
+    mutate(N = to_presence_absense(N)) %>%
+    # Reshape the data so each column is a species
+    pivot_wider(names_from = Species, values_from = N,
+                values_fill = list(N = 0)) %>% 
+    # Remove unneeded columns
+    select(-Habitat, -Site, -Acre)
+# browser()
+  # the specaccum function in the vegan package does species accumulation curves
+  specaccum(com_mat, method = "random", permutations = 500)
+}
+format_sac = function(sac_out, ci_level = 1.96) {
+  # Convert the output of get_sac() to a data frame
+  sac_out[c("sites", "richness", "sd")] %>% as_tibble %>% 
+  mutate(lower_ci = richness - ci_level * sd, 
+         upper_ci = richness + ci_level * sd) # define confidence intervals
+}
+```
+
+Of each of the species accumulation curves calculated, those for quarry sites, high disturbance sites, open canopy sites, and low ground cover sites have the flatest overall trajectories. The curves for pasture sample sites, low disturbance sites, closed canopy sites, and high ground cover sites all have a more pronounced bend. In general, this corresponds well to the communities that had the highest predicted richness at 250 sample sites, with the exception of the low disturbance community, which had a lower predicted richness (16.4) than the high disturbance community (17.5). 
+
+```{r include=FALSE}
+# SAC requires a data set where each column is a species, each row is a site, and each cell is presence/absense
+
+sac_out_all = full_ant_data %>% 
+  get_sac()
+sac_out_all 
+
+sac_all_df = format_sac(sac_out_all)
+
+# Species accumulation curve for closed canopy
+sac_all_plot = 
+  ggplot(sac_all_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("All Sample Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_q = full_ant_data %>% 
+  filter(Habitat == "Q") %>% 
+  get_sac()
+ 
+
+sac_q_df = format_sac(sac_out_q)
+
+# Species accumulation curve for closed canopy
+sac_q_plot = 
+  ggplot(sac_q_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Quarry Sample Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_p = full_ant_data %>% 
+  filter(Habitat == "P") %>% 
+  get_sac()
+ 
+
+sac_p_df = format_sac(sac_out_p)
+
+# Species accumulation curve for closed canopy
+sac_p_plot = 
+  ggplot(sac_p_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Pasture Sample Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_r = full_ant_data %>% 
+  filter(Habitat == "R") %>% 
+  get_sac()
+ 
+
+sac_r_df = format_sac(sac_out_r)
+
+# Species accumulation curve for closed canopy
+sac_r_plot = 
+  ggplot(sac_r_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("River Sample Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_closed = full_ant_data %>% 
+  filter(Canopy_cover >= 2) %>% 
+  get_sac()
+sac_out_closed 
+
+sac_closed_df = format_sac(sac_out_closed)
+
+# Species accumulation curve for closed canopy
+sac_closed_plot = 
+  ggplot(sac_closed_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Closed Canopy Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_open = full_ant_data %>% 
+  filter(Canopy_cover <= 1) %>% 
+  get_sac()
+sac_out_open 
+
+sac_open_df = format_sac(sac_out_open)
+
+# Species accumulation curve for closed canopy
+sac_open_plot = 
+  ggplot(sac_open_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Open Canopy sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_disturbed = full_ant_data %>% 
+  filter(Disturbance =="high") %>% 
+  get_sac()
+sac_out_disturbed 
+
+sac_disturbed_df = format_sac(sac_out_disturbed)
+
+# Species accumulation curve for closed canopy
+sac_disturbed_plot = 
+  ggplot(sac_disturbed_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("High Disturbance Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_pristine = full_ant_data %>% 
+  filter(Disturbance =="low") %>% 
+  get_sac()
+sac_out_pristine 
+
+sac_pristine_df = format_sac(sac_out_pristine)
+
+# Species accumulation curve for closed canopy
+sac_pristine_plot = 
+  ggplot(sac_pristine_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Low Disturbance Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_ghigh = full_ant_data %>% 
+  filter(Ground_cover >= 2) %>% 
+  get_sac()
+sac_out_ghigh 
+
+sac_ghigh_df = format_sac(sac_out_ghigh)
+
+# Species accumulation curve for closed canopy
+sac_ghigh_plot = 
+  ggplot(sac_ghigh_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("High Ground Cover Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+sac_out_glow = full_ant_data %>% 
+  filter(Canopy_cover <= 1) %>% 
+  get_sac()
+sac_out_glow 
+
+sac_glow_df = format_sac(sac_out_glow)
+
+# Species accumulation curve for closed canopy
+sac_glow_plot = 
+  ggplot(sac_glow_df, aes(x = sites, y = richness)) +
+   geom_line(size = 1) +
+    # The lines below add in confidence intervals
+   geom_line(aes(y = lower_ci), linetype = 2, color = grey(.3)) +
+   geom_line(aes(y = upper_ci), linetype = 2, color = grey(.3)) +
+  ggtitle("Low Ground Cover Sites")+
+   xlab("Sampling intensity (number of sites)") +
+   ylab("Number of ant species")
+
+```
+
+
+```{r echo= FALSE, fig.width=15}
+grid.arrange(sac_all_plot, sac_q_plot, ncol = 2)
+
+grid.arrange(sac_p_plot, sac_r_plot, ncol = 2)
+
+grid.arrange(sac_pristine_plot, sac_disturbed_plot, ncol=2)
+
+grid.arrange(sac_closed_plot, sac_open_plot, ncol=2)
+
+grid.arrange(sac_ghigh_plot, sac_glow_plot, ncol=2)
+```
+
+
+
+```{r echo=FALSE}
+
+richness <- matrix(c("All", "Pasture", "Quarry","River", "High disturbance","Low disturbance","Closed canopy","Open canopy","Dense ground cover ","Sparse ground cover","18","13", "5", "9", "15", "14", "18", "10", "12", "16","232","153","14","48","120","112","164","68","87","145", "18.1", "14.8","9.5","12.7","17.5","16.4","19.1","12.8","15.0","12.7"), ncol=4)
+colnames(richness)=c("Community Type", "Observed Richness", "Number of Sites Sampled", "Predicted Richness (at 250 sites sampled)")
+kable(richness, format="latex")%>%
+  kable_styling(full_width = TRUE)
+```
+
+```{r include=FALSE}
+# You can approxiamte this curve with a log-linear regression
+allcurve <- lm(richness ~ log(sites), data = sac_all_df)
+qcurve <- lm(richness ~ log(sites), data = sac_q_df)
+pcurve <- lm(richness ~ log(sites), data = sac_p_df)
+rcurve <- lm(richness ~ log(sites), data = sac_r_df)
+pristinecurve <- lm(richness ~ log(sites), data = sac_pristine_df)
+disturbedcurve <-lm(richness ~ log(sites), data = sac_disturbed_df)
+closedcurve <-lm(richness ~ log(sites), data = sac_closed_df)
+opencurve <- lm(richness ~ log(sites), data = sac_open_df)
+ghighcurve <- lm(richness ~ log(sites), data = sac_ghigh_df)
+glowcurve <- lm(richness ~ log(sites), data = sac_glow_df)
+
+predict(allcurve, list(sites = c(50,250)))
+predict(qcurve, list(sites = c(14,250)))
+predict(pcurve, list(sites = c(153,250)))
+predict(rcurve, list(sites = c(48,250)))
+predict(pristinecurve, list(sites = c(50,250)))
+predict(disturbedcurve, list(sites = c(120,250)))
+predict(closedcurve, list(sites = c(164,250)))
+predict(opencurve, list(sites = c(68,250)))
+predict(ghighcurve, list(sites = c(50,250)))
+predict(glowcurve, list(sites = c(50,250)))
+
+```
+
+```{r include = FALSE}
+table(tidy_data$Habitat == "R")
+table(tidy_data$Habitat == "Q")
+table(tidy_data$Habitat == "P")
+table(tidy_data$Disturbance== "low")
+table(tidy_data$Disturbance == "high")
+table(tidy_data$Canopy =="open")
+table(tidy_data$Canopy =="closed")
+table(tidy_data$Ground =="sparse")
+table(tidy_data$Ground=="dense")
+```
+
+```{r include=FALSE}
+# I've only given you the sac for closed canopy; 
+# you can use the above code to work with open and all canopy types
+# You may also be interested in comparing different disturbance regimes or habitat types
+
+
+# Rank Abundance Curves ---------------------------------------------------
+
+# We want to make a plot that shows how evenly species are distributed
+
+rank_abundance_data = function(.tidy_dat) {
+  # format data for a rank abundance plot
+  .tidy_dat %>% 
+  group_by(Species) %>% summarize(N = sum(N)) %>% # total counts per species
+  arrange(desc(N)) %>% # order by decreasing N
+  mutate(Species = factor(Species, levels = unique(Species))) # Define species ordering by frequency
+}
+
+plot_rank_abundance = function(.data, right_margin = 2.8) {
+  # Make the rank abundance plot
+  # The right_margin argument is used to make sure that 
+    # the angled axis labels don't go of the page
+    # make it larger or smaller to suit your tastes
+  ggplot(.data, aes(x = Species, y = N)) +
+  geom_line(group = 1) +
+  scale_y_log10() + # puts y axis on log scale
+  theme(axis.text.x = # cleans up appearance of x axis labels
+          element_text(angle = -20, hjust = 0.05,vjust = 1, face = "italic"),
+        # makes sure that the axis labels don't go off the page
+        plot.margin = unit(c(0,right_margin,0,0)+.1, "cm"))
+}
+ra = tidy_data %>%
+  rank_abundance_data()
+ra_disturbed =  tidy_data %>% 
+  filter(Disturbance == "high") %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+ra_disturbed
+ra_pristine =  tidy_data %>% 
+  filter(Disturbance == "low") %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+
+ra_closed =  tidy_data %>% 
+  filter(Canopy_cover >= 2) %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+
+ra_open =  tidy_data %>% 
+  filter(Canopy_cover <=1) %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+
+ra_p =  tidy_data %>% 
+  filter(Habitat == "P") %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+ra_q =  tidy_data %>% 
+  filter(Habitat == "Q") %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+ra_r =  tidy_data %>% 
+  filter(Habitat == "R") %>% # or whatever group we're interested in seeing
+  rank_abundance_data  
+
+allrank<-ra %>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("All Sites")
+
+
+disturbedrank<-ra_disturbed %>% plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("High Disturbance Sites")
+
+
+pristinerank<-ra_pristine %>% plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("Low Disturbance Sites")
+
+closedrank <- ra_closed %>%
+  plot_rank_abundance(right_margin=2.7)+
+  ggtitle("Closed Canopy Sites")
+
+openrank <- ra_open %>%
+  plot_rank_abundance(right_margin=2.7)+
+  ggtitle("Open Canopy Sites")
+
+ra_groundhigh =  tidy_data %>% 
+  filter(Ground_cover>= 2) %>% # or whatever group we're interested in seeing
+  rank_abundance_data
+
+ra_groundlow = tidy_data %>%
+  filter(Ground_cover<=1)%>%
+  rank_abundance_data
+
+ghighrank <-ra_groundhigh%>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("Dense Ground Cover Sites")
+
+glowrank <-ra_groundlow%>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("Low Ground Cover Sites")
+
+qrank <-ra_q%>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("Quarry Sites")
+
+
+rrank <-ra_r%>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("River Sites")
+
+
+prank <-ra_p%>%
+  plot_rank_abundance(right_margin = 2.7)+
+  ggtitle("Pasture Sites")
+
+ 
+```
+ 
+A visual analysis of the rank abundance curves reveals that *Solenopsis invicta* was the dominant species type in every sample type tested and was followed distantly by a Pheidole species. As such, the evenness of the species distribution is determined largely by the extent to which Solenopsis invicta outranks its nearest competitor. In the case of open canopy sites, Solenopsis invicta appears to outnumber Pheidole tetra by over an order of magnitude, and the gap between Solenopsis invicta and Pheidole floridana is approximately as large in high disturbance sites. By comparison, dense ground cover sites appear to be less even than low ground cover sites, but this is not as stark as the difference between the other pairings. 
+
+```{r echo=FALSE, fig.width=15}
+grid.arrange(allrank, qrank, ncol=2)
+```
+
+```{r echo=FALSE, fig.width=15}
+grid.arrange(prank, rrank, ncol=2)
+```
+
+```{r echo=FALSE, fig.width=15}
+grid.arrange(disturbedrank,pristinerank, ncol=2)
+```
+
+```{r echo=FALSE, fig.width=15}
+grid.arrange(closedrank,openrank,ncol=2)
+```
+
+```{r echo=FALSE, fig.width=15}
+grid.arrange(ghighrank, glowrank, ncol=2)
+```
+
+```{r include=FALSE}
+#### For you to do: ####
+# Compare the rank abundance plots of different sub-groups of the data.  
+# Where are they more/less even?
+
+
+# Shannon Index -----------------------------------------------------------
+
+shannon_index = function(species, count) {
+  # Species should be a vector of species names; count should be how many were present
+  p = tibble(species, count) %>% 
+    # Remove duplicates and zeros
+    group_by(species) %>%  summarize(count = sum(count)) %>% 
+      filter(count > 0) %>% 
+    # Convert to frequencies
+    mutate(p = count / sum(count)) %>% 
+    pull(p) # this is all we want
+  if(length(p) < 2) return(0) # one or 0 species has an H of 0
+  -sum(p * log(p)) # calculate shannon index
+}
+tidy_data %>% group_by(Ground, Canopy) %>% 
+  summarize(index = shannon_index(Species, N))
+```
+
+The communities with the highest Shannon Diversity Index were the quarry sites, the low disturbance sites, the closed canopy sites, and the sparse ground cover sites. The sites with the lowest diversity index were the river sites, the high disturbance sites, the dense ground cover sites, and especially the open canopy sites. There seems to be an interaction between ground cover and canopy structure, as dense ground cover with open canopy had the lowest Shannon Diversity Index scores (0.36), while dense ground cover with closed canopy had one of the highest (1.56). 
+
+```{r echo=FALSE}
+# You can compare various subsets with the group_by command
+
+shannon<-matrix(c("Pasture","Quarry","River","High disturbance","Low disturbance","Closed canopy","Open canopy","Dense ground cover","Sparse ground cover","Dense ground-Open canopy","Dense ground-Closed canopy",1.25,1.27,1.09,1.06,1.54,1.58,0.78,1.09,1.43,0.36, 1.56),ncol=2)
+colnames(shannon)=c("Community Type","Shannon Diversity Index")
+kable(shannon, format="latex")	%>%
+  kable_styling(full_width = TRUE)
+	
+```
+**Discussion**
+
+Several patterns emerged from the Chi-square tests performed on the distribution of *S. invicta* presence. That open canopy areas with disturbance have a significant effect on RIFA presence aligns well with the predictions made earlier in this study, based on the findings of @tschinkelDistributionFireAnts1988.  These results may also be reflected in the tests that this study performed on community ecology for different environmental conditions. The finding that dense ground cover has a very low Shannon Diversity Index may possibly be explained by the mechanism of dispersal discussed in  @porterInvasionRedImported1988, in which the RIFA pioneer queen is aided in displacing the native ant when they find disturbances which have cleared a site of heavy vegetation. It seems more likely that testing this interaction reveals that the supposed effect of ground cover is mostly a result of the high overlap between areas with dense ground cover and closed canopies, as dense ground cover with closed canopy had a very high Shannon Diversity Index, while dense ground cover with open canopy has the lowest Shannon Diversity Index. Further undermining the first hypothesis, no significant effect was found for dense ground cover on RIFA presence. 
+
+Though high disturbance sites are found to have a higher observed and predicted richness than low disturbance sites, they have a much lower Shannon Diversity Index. This increase in observed richness disappears when accounting for the higher number of samples taken from high disturbance sites, but further testing with more intensive sampling would be required to determine if there is really higher richness in high disturbance sites. If this effect is real, it could potentially be explained through a combination of two mechanisms. Disturbance favors RIFA, which become even more dominant, thereby suppressing diversity, but it may increase competition among the less common species, in an example of the intermediate disturbance hypothesis. Observed in its rank abundance curve, with the exception of the dominating *S. invicta* presence, high disturbance sites are very even. 
+
+In the case of open canopies and high disturbance, it would appear that a heightened RIFA presence suppresses the overall Shannon Diversity Index. This cannot conclusively be said to be causative, but this is a strong piece of evidence against the stated hypothesis that biodiversity would be the same, regardless of high RIFA presence. 
+
+It is difficult to determine any conclusive effects from habitat type, as the three habitats each received such disparate amounts of sampling. It is interesting that river sites had such a low Jaccard similarity with pasture sites. Though quarry sites and pasture sites had an equally low index, the low degree of coverage of the quarry sites, with only 14 samples taken, makes this effect easier to explain through random noise. It may be that the effect for both is real, and that the pasture sites have very distinct ant communities from the other two types. If so, this may be explained by different soil types, as the pasture has Hardeman soils as opposed to Travis soils or Gaddy soils [@WebSoilSurvey2017], varying levels of canopy cover, vegetation, or disturbance, or through the low enclosures which surround the pasture sites. 
+
+**Citations**
+
